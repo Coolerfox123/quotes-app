@@ -87,6 +87,17 @@ async function pull() {
   }
 }
 
+// Add readings and quotes that exist in `remote` but not here (matched by id).
+function mergeRemote(remote) {
+  for (const rr of remote.readings) {
+    const mine = state.readings.find((r) => r.id === rr.id);
+    if (!mine) { state.readings.push(rr); continue; }
+    for (const rq of rr.quotes || []) {
+      if (!mine.quotes.some((q) => q.id === rq.id)) mine.quotes.push(rq);
+    }
+  }
+}
+
 async function push() {
   const send = () => api("PUT", {
     message: "Update quotes",
@@ -95,23 +106,33 @@ async function push() {
   });
   let res = await send();
   if (res.status === 409 || res.status === 422) {
-    // The file changed on GitHub since we loaded it: refresh and save again.
-    const head = await api("GET");
-    remoteSha = head.ok ? (await head.json()).sha : null;
+    // quotes.json changed on GitHub since we loaded it (another device, or an
+    // edit made directly in the repo): keep those additions, then save again.
+    const remote = await pull();
+    if (remote) {
+      mergeRemote(remote);
+      saveLocal();
+      update({ persist: false, newQuote: false });
+    }
     res = await send();
   }
   if (!res.ok) throw new Error(describe(res.status));
   remoteSha = (await res.json()).content.sha;
 }
 
+let pendingPushes = 0;
+
 function schedulePush() {
+  if (!pushTimer) pendingPushes++;
   clearTimeout(pushTimer);
   setStatus("Saving…");
   pushTimer = setTimeout(() => {
+    pushTimer = null;
     pushChain = pushChain
       .then(push)
       .then(() => setStatus(`Saved to ${sync.repo}.`))
-      .catch((err) => setStatus(`Not saved: ${err.message || "no connection"} Your changes are kept on this device.`));
+      .catch((err) => setStatus(`Not saved: ${err.message || "no connection"} Your changes are kept on this device.`))
+      .finally(() => { pendingPushes--; });
   }, 1200);
 }
 
@@ -342,3 +363,8 @@ $("sync-disconnect").addEventListener("click", () => {
 update({ persist: false });
 renderSync();
 if (sync) loadFromGitHub();
+
+// Coming back to the app: pick up quotes added elsewhere in the meantime.
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && sync && pendingPushes === 0) loadFromGitHub();
+});
