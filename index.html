@@ -60,6 +60,21 @@
         </label>
       </div>
     </section>
+
+    <!-- GitHub sync -->
+    <section class="card">
+      <h2>Sync with GitHub</h2>
+      <p class="muted small">Saves your quotes to a private repository, so they sync across devices and feed your lock screen.</p>
+      <form id="sync-form">
+        <input id="sync-repo" placeholder="owner/repository" autocapitalize="off" autocomplete="off" required>
+        <input id="sync-token" type="password" placeholder="GitHub access token" autocomplete="off">
+        <div class="row">
+          <button type="submit">Connect</button>
+          <button id="sync-disconnect" type="button" class="secondary" hidden>Disconnect</button>
+        </div>
+      </form>
+      <p id="sync-status" class="muted small" aria-live="polite"></p>
+    </section>
   </main>
   <script src="app.js"></script>
 </body>

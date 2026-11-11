@@ -14,12 +14,133 @@ function load() {
   return { readings: [] };
 }
 
-function save() {
+function saveLocal() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   } catch (_) {
     alert("Couldn't save — your browser may be blocking storage.");
   }
+}
+
+function save() {
+  saveLocal();
+  if (sync) schedulePush();
+}
+
+// ---------- GitHub sync ----------
+// When connected, quotes.json in the data repo is the source of truth:
+// it is loaded on start, and every change is saved back to it.
+
+const SYNC_KEY = "reading-quotes-sync-v1";
+let sync = loadSync(); // { repo: "owner/name", token } or null
+let remoteSha = null;
+let pushTimer = null;
+let pushChain = Promise.resolve();
+
+function loadSync() {
+  try {
+    const s = JSON.parse(localStorage.getItem(SYNC_KEY));
+    if (s && s.repo && s.token) return s;
+  } catch (_) { /* not connected */ }
+  return null;
+}
+
+function setStatus(text) {
+  $("sync-status").textContent = text;
+}
+
+function api(method, body) {
+  return fetch(`https://api.github.com/repos/${sync.repo}/contents/quotes.json`, {
+    method,
+    cache: "no-store",
+    headers: { Authorization: `Bearer ${sync.token}`, Accept: "application/vnd.github+json" },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+}
+
+function describe(status) {
+  if (status === 401) return "GitHub didn't accept the token.";
+  if (status === 403 || status === 404) return "Can't reach that repository — check its name and the token's access.";
+  return `GitHub returned an error (${status}).`;
+}
+
+const toBase64 = (text) => {
+  let bin = "";
+  for (const b of new TextEncoder().encode(text)) bin += String.fromCharCode(b);
+  return btoa(bin);
+};
+const fromBase64 = (b64) =>
+  new TextDecoder().decode(Uint8Array.from(atob(b64.replace(/\s/g, "")), (c) => c.charCodeAt(0)));
+
+// Returns the remote data, or null if quotes.json doesn't exist yet.
+async function pull() {
+  const res = await api("GET");
+  if (res.status === 404) { remoteSha = null; return null; }
+  if (!res.ok) throw new Error(describe(res.status));
+  const file = await res.json();
+  remoteSha = file.sha;
+  try {
+    const data = JSON.parse(fromBase64(file.content));
+    return data && Array.isArray(data.readings) ? data : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+async function push() {
+  const send = () => api("PUT", {
+    message: "Update quotes",
+    content: toBase64(JSON.stringify(state, null, 2) + "\n"),
+    sha: remoteSha || undefined,
+  });
+  let res = await send();
+  if (res.status === 409 || res.status === 422) {
+    // The file changed on GitHub since we loaded it: refresh and save again.
+    const head = await api("GET");
+    remoteSha = head.ok ? (await head.json()).sha : null;
+    res = await send();
+  }
+  if (!res.ok) throw new Error(describe(res.status));
+  remoteSha = (await res.json()).content.sha;
+}
+
+function schedulePush() {
+  clearTimeout(pushTimer);
+  setStatus("Saving…");
+  pushTimer = setTimeout(() => {
+    pushChain = pushChain
+      .then(push)
+      .then(() => setStatus(`Saved to ${sync.repo}.`))
+      .catch((err) => setStatus(`Not saved: ${err.message || "no connection"} Your changes are kept on this device.`));
+  }, 1200);
+}
+
+async function loadFromGitHub() {
+  setStatus("Loading from GitHub…");
+  try {
+    const remote = await pull();
+    if (remote && (remote.readings.length || !state.readings.length)) {
+      state = remote;
+      saveLocal();
+      update({ persist: false });
+      setStatus(`Connected to ${sync.repo}.`);
+    } else if (state.readings.length) {
+      schedulePush(); // first connection: upload what's on this device
+    } else {
+      setStatus(`Connected to ${sync.repo}.`);
+    }
+    return true;
+  } catch (err) {
+    setStatus(`Couldn't load: ${err.message || "no connection"}`);
+    return false;
+  }
+}
+
+function renderSync() {
+  $("sync-repo").value = sync ? sync.repo : $("sync-repo").value || "Coolerfox123/quotes-data";
+  $("sync-token").value = "";
+  $("sync-token").placeholder = sync ? "Token saved on this device" : "GitHub access token";
+  $("sync-disconnect").hidden = !sync;
 }
 
 const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -134,8 +255,8 @@ function renderLibrary() {
   }
 }
 
-function update({ newQuote = true } = {}) {
-  save();
+function update({ newQuote = true, persist = true } = {}) {
+  if (persist) save();
   renderSelects();
   renderLibrary();
   if (newQuote) showRandomQuote();
@@ -193,4 +314,31 @@ $("import-file").addEventListener("change", async (e) => {
   e.target.value = "";
 });
 
-update();
+$("sync-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const repo = $("sync-repo").value.trim().replace(/^https:\/\/github\.com\//, "").replace(/\/$/, "");
+  const token = $("sync-token").value.trim() || (sync && sync.token);
+  if (!/^[^/\s]+\/[^/\s]+$/.test(repo) || !token) {
+    setStatus("Enter the repository as owner/name, and a token.");
+    return;
+  }
+  sync = { repo, token };
+  if (await loadFromGitHub()) {
+    localStorage.setItem(SYNC_KEY, JSON.stringify(sync));
+  } else {
+    sync = loadSync();
+  }
+  renderSync();
+});
+
+$("sync-disconnect").addEventListener("click", () => {
+  localStorage.removeItem(SYNC_KEY);
+  sync = null;
+  remoteSha = null;
+  renderSync();
+  setStatus("Disconnected. Quotes stay on this device.");
+});
+
+update({ persist: false });
+renderSync();
+if (sync) loadFromGitHub();

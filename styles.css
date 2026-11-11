@@ -93,3 +93,5 @@ summary { cursor: pointer; display: flex; justify-content: space-between; gap: 8
 details ul { margin: 8px 0 0; padding-left: 20px; }
 details li { margin-bottom: 6px; }
 .backup { margin-top: 16px; }
+.small { font-size: 0.9rem; margin: 0 0 12px; }
+#sync-status { margin: 12px 0 0; }
