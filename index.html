@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Reading Quotes</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Reading Quotes</h1>
+      <p class="subtitle">Quotes from the things you read</p>
+    </header>
+
+    <!-- Quote display -->
+    <section class="card quote-display" aria-live="polite">
+      <blockquote id="quote-text">Add a reading and a quote to get started.</blockquote>
+      <p id="quote-source" class="source"></p>
+      <div class="row">
+        <select id="filter-reading" aria-label="Show quotes from">
+          <option value="">All readings</option>
+        </select>
+        <button id="next-quote" type="button">Show another quote</button>
+      </div>
+    </section>
+
+    <!-- Add a reading -->
+    <section class="card">
+      <h2>Add a reading</h2>
+      <form id="reading-form">
+        <input id="reading-title" placeholder="Title (e.g. Meditations)" required>
+        <input id="reading-author" placeholder="Author (optional)">
+        <button type="submit">Add reading</button>
+      </form>
+    </section>
+
+    <!-- Add a quote -->
+    <section class="card">
+      <h2>Add a quote</h2>
+      <form id="quote-form">
+        <select id="quote-reading" required aria-label="Reading">
+          <option value="">Choose a reading…</option>
+        </select>
+        <textarea id="quote-body" rows="3" placeholder="The quote" required></textarea>
+        <input id="quote-page" placeholder="Page or chapter (optional)">
+        <button type="submit">Add quote</button>
+      </form>
+    </section>
+
+    <!-- Library -->
+    <section class="card">
+      <h2>Your readings</h2>
+      <div id="library"><p class="muted">No readings yet.</p></div>
+      <div class="row backup">
+        <button id="export-btn" type="button" class="secondary">Export backup</button>
+        <label class="secondary button-like">
+          Import backup
+          <input id="import-file" type="file" accept="application/json" hidden>
+        </label>
+      </div>
+    </section>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>
